@@ -487,7 +487,7 @@ class PaperlibAISummaryExtension extends PLExtension {
           model = customModelCode;
         }
 
-        const prompt = `Please help me to choose some highly-related tags for the paper titled ${paperEntity.title} from this tag list: ${tagList}. The first page content can be used as a reference: ".`;
+        const prompt = `Please help me to choose some highly-related tags for the paper titled ${paperEntity.title} from this tag list: ${tagList}. The first page content can be used as a reference:\n\n`;
         const systemInstruction = `You are an AI assistant for tagging academic publications.\n Please just give me a JSON stringified string like {"suggested": ["tag1"]} without any other content, which can be directly parsed by JSON.parse(). Please don't create new tags. If none is related, just return an empty array. Better less than more.`;
 
         const apiKey = await this.getAPIKey(model);
