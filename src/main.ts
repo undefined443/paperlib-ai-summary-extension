@@ -1,8 +1,7 @@
-import { LLMsAPI } from "@future-scholars/llms-api-service";
 import { PLAPI, PLExtAPI, PLExtension, PLMainAPI } from "paperlib-api/api";
 import { PaperEntity } from "paperlib-api/model";
 
-import { AISummaryExtService } from "@/services/service";
+import { AISummaryExtService, parseJSON } from "@/services/service";
 
 class PaperlibAISummaryExtension extends PLExtension {
   disposeCallbacks: (() => void)[];
@@ -25,33 +24,20 @@ class PaperlibAISummaryExtension extends PLExtension {
           name: "LLM Model",
           description: "The LLM model to use.",
           options: {
-            "deepseek-chat": "DeepSeek v3",
-            "glm-3-turbo": "ChatGLM 3 Turbo",
-            "glm-4": "ChatGLM 4",
-            "glm-4-air": "ChatGLM 4 Air",
-            "glm-4-flash": "ChatGLM 4 Flash",
-            "glm-4v": "ChatGLM 4v",
-            "glm-4-0520": "ChatGLM 4 0520",
-            "gemini-1.0-pro": "Gemini 1.0 Pro",
-            "gemini-1.5-pro-latest": "Gemini 1.5 Pro",
-            "gemini-1.5-flash-latest": "Gemini 1.5 Flash",
-            "gemini-2.0-flash-exp": "Gemini 2.0 Flash",
-            "gpt-3.5-turbo": "GPT-3.5 Turbo",
-            "gpt-3.5-turbo-16k": "GPT-3.5 Turbo 16K",
-            "gpt-3.5-turbo-1106": "GPT-3.5 Turbo 1106",
-            "gpt-4": "GPT-4",
-            "gpt-4-32k": "GPT-4 32K",
-            "gpt-4-1106-preview": "GPT-4 1106 Preview",
-            "gpt-4-turbo": "GPT-4 Turbo",
-            "gpt-4o": "GPT-4o",
-            "gpt-4o-mini": "GPT-4o Mini",
-            "codellama-70b-instruct": "Perplexity codellama-70b",
-            "mistral-7b-instruct": "Perplexity mistral-7b",
-            "mixtral-8x7b-instruct": "Perplexity mistral-8x7b",
-            "sonar-small-chat": "Perplexity sonar-small-chat",
-            "sonar-medium-chat": "Perplexity sonar-medium-chat",
+            "deepseek-chat": "DeepSeek Chat",
+            "glm-5": "GLM-5",
+            "glm-5-turbo": "GLM-5 Turbo",
+            "glm-5.1": "GLM-5.1",
+            "gemini-2.5-flash": "Gemini 2.5 Flash",
+            "gemini-2.5-pro": "Gemini 2.5 Pro",
+            "gpt-5.5": "GPT-5.5",
+            "gpt-5.5-pro": "GPT-5.5 Pro",
+            "gpt-5.4-mini": "GPT-5.4 Mini",
+            "sonar": "Perplexity Sonar",
+            "sonar-pro": "Perplexity Sonar Pro",
+            "sonar-reasoning-pro": "Perplexity Sonar Reasoning Pro",
           },
-          value: "gpt-4o-mini",
+          value: "gpt-5.4-mini",
           order: 1,
         },
         "gemini-api-key": {
@@ -89,18 +75,18 @@ class PaperlibAISummaryExtension extends PLExtension {
           value: "",
           order: 2,
         },
+        pageNum: {
+          type: "string",
+          name: "Page Number",
+          description: "Max pages to send for summarizing.",
+          value: "5",
+          order: 3,
+        },
         prompt: {
           type: "string",
           name: "Prompt",
           description: "Prompt for summarizing.",
           value: "Summary this paper in 3-4 sentences:\n\n",
-          order: 3,
-        },
-        pageNum: {
-          type: "string",
-          name: "Page Number",
-          description: "The number of pages to provide.",
-          value: 5,
           order: 4,
         },
         customAPIURL: {
@@ -143,7 +129,7 @@ class PaperlibAISummaryExtension extends PLExtension {
     this.disposeCallbacks.push(
       PLAPI.commandService.on(
         "@future-scholars/symmarize_selected_paper" as any,
-        (value) => {
+        () => {
           this.summarize();
         },
       ),
@@ -174,7 +160,7 @@ class PaperlibAISummaryExtension extends PLExtension {
     this.disposeCallbacks.push(
       PLAPI.commandService.on(
         "@future-scholars/aitag_selected_paper" as any,
-        (value) => {
+        () => {
           this.tag();
         },
       ),
@@ -253,41 +239,18 @@ class PaperlibAISummaryExtension extends PLExtension {
       return customAPIKey;
     }
 
-    let apiKey = "";
-    const modelServiceProvider = LLMsAPI.modelServiceProvider(model);
-    if (modelServiceProvider === "Gemini") {
-      apiKey = (await PLExtAPI.extensionPreferenceService.get(
-        this.id,
-        "gemini-api-key",
-      )) as string;
-    } else if (modelServiceProvider === "OpenAI") {
-      apiKey = (await PLExtAPI.extensionPreferenceService.get(
-        this.id,
-        "openai-api-key",
-      )) as string;
-    } else if (modelServiceProvider === "Perplexity") {
-      apiKey = (await PLExtAPI.extensionPreferenceService.get(
-        this.id,
-        "perplexity-api-key",
-      )) as string;
-    } else if (modelServiceProvider === "Zhipu") {
-      apiKey = (await PLExtAPI.extensionPreferenceService.get(
-        this.id,
-        "zhipu-api-key",
-      )) as string;
-    } else if (modelServiceProvider === "Deepseek") {
-      apiKey = (await PLExtAPI.extensionPreferenceService.get(
-        this.id,
-        "deepseek-api-key",
-      )) as string;
-    } else {
-      apiKey = (await PLExtAPI.extensionPreferenceService.get(
-        this.id,
-        "openai-api-key",
-      )) as string;
+    let preferenceKey = "openai-api-key";
+    if (model.startsWith("gemini-")) {
+      preferenceKey = "gemini-api-key";
+    } else if (model.startsWith("glm-")) {
+      preferenceKey = "zhipu-api-key";
+    } else if (model.startsWith("sonar")) {
+      preferenceKey = "perplexity-api-key";
+    } else if (model === "deepseek-chat") {
+      preferenceKey = "deepseek-api-key";
     }
 
-    return apiKey;
+    return (await PLExtAPI.extensionPreferenceService.get(this.id, preferenceKey)) as string;
   }
 
   async summarize() {
@@ -320,11 +283,8 @@ class PaperlibAISummaryExtension extends PLExtension {
       const paperEntity = selectedPaperEntities[0];
 
       const pageNum = parseInt(
-        (await PLExtAPI.extensionPreferenceService.get(
-          this.id,
-          "pageNum",
-        )) as string,
-      );
+        (await PLExtAPI.extensionPreferenceService.get(this.id, "pageNum")) as string,
+      ) || 5;
 
       let prompt = (await PLExtAPI.extensionPreferenceService.get(
         this.id,
@@ -502,7 +462,7 @@ class PaperlibAISummaryExtension extends PLExtension {
         );
         if (suggestedTagStr) {
           try {
-            const { suggested } = LLMsAPI.parseJSON(suggestedTagStr);
+            const { suggested } = parseJSON(suggestedTagStr);
             const suggestedTags = tags.filter((tag) =>
               suggested.includes(tag.name),
             );

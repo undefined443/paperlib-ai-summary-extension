@@ -15,9 +15,8 @@
     "noImplicitAny": false,
     "sourceMap": true,
     "strict": true,
-    "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
