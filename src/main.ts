@@ -337,26 +337,19 @@ class PaperlibAISummaryExtension extends PLExtension {
       if (summary) {
         if (useMarkdown) {
           if (paperEntity.note === "") {
-            summary = "<md>\n## AI Summary \n\n" + summary;
+            paperEntity.note = "<md>\n## AI Summary\n\n" + summary;
+          } else if (paperEntity.note.startsWith("<md>")) {
+            paperEntity.note += "\n\n## AI Summary\n\n" + summary;
           } else {
-            if (paperEntity.note.startsWith("<md>")) {
-              summary = "\n\n## AI Summary \n\n" + summary;
-            } else {
-              paperEntity.note =
-                "<md>\n" +
-                paperEntity.note +
-                "\n\n## AI Summary \n\n" +
-                summary;
-            }
+            paperEntity.note = "<md>\n" + paperEntity.note + "\n\n## AI Summary\n\n" + summary;
           }
         } else {
           if (paperEntity.note === "") {
-            summary = "AI Summary: " + summary;
+            paperEntity.note = "AI Summary: " + summary;
           } else {
-            summary = "\n\nAI Summary: " + summary;
+            paperEntity.note += "\n\nAI Summary: " + summary;
           }
         }
-        paperEntity.note = paperEntity.note + summary;
         await PLAPI.paperService.update([paperEntity], false, true);
       } else {
         PLAPI.logService.warn("Summary is empty.", "", true, "AISummaryExt");
