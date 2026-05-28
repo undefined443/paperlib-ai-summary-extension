@@ -24,29 +24,17 @@ class PaperlibAISummaryExtension extends PLExtension {
           name: "LLM Model",
           description: "The LLM model to use.",
           options: {
-            "deepseek-v4-flash": "DeepSeek V4 Flash",
-            "deepseek-v4-pro": "DeepSeek V4 Pro",
-            "glm-5": "GLM-5",
-            "glm-5-turbo": "GLM-5 Turbo",
-            "glm-5.1": "GLM-5.1",
-            "gemini-2.5-flash": "Gemini 2.5 Flash",
-            "gemini-2.5-pro": "Gemini 2.5 Pro",
             "gpt-5.5": "GPT-5.5",
             "gpt-5.5-pro": "GPT-5.5 Pro",
             "gpt-5.4-mini": "GPT-5.4 Mini",
+            "gemini-2.5-flash": "Gemini 2.5 Flash",
+            "gemini-2.5-pro": "Gemini 2.5 Pro",
             "sonar": "Perplexity Sonar",
             "sonar-pro": "Perplexity Sonar Pro",
             "sonar-reasoning-pro": "Perplexity Sonar Reasoning Pro",
           },
           value: "gpt-5.4-mini",
           order: 1,
-        },
-        "gemini-api-key": {
-          type: "string",
-          name: "Gemini API Key",
-          description: "The API key for Gemini.",
-          value: "",
-          order: 2,
         },
         "openai-api-key": {
           type: "string",
@@ -55,24 +43,17 @@ class PaperlibAISummaryExtension extends PLExtension {
           value: "",
           order: 2,
         },
+        "gemini-api-key": {
+          type: "string",
+          name: "Gemini API Key",
+          description: "The API key for Gemini.",
+          value: "",
+          order: 2,
+        },
         "perplexity-api-key": {
           type: "string",
           name: "Perplexity API Key",
           description: "The API key for Perplexity.",
-          value: "",
-          order: 2,
-        },
-        "zhipu-api-key": {
-          type: "string",
-          name: "Zhipu ChatGLM API Key",
-          description: "The API key for ChatGLMs.",
-          value: "",
-          order: 2,
-        },
-        "deepseek-api-key": {
-          type: "string",
-          name: "Deepseek API Key",
-          description: "The API key for Deepseek.",
           value: "",
           order: 2,
         },
@@ -243,12 +224,8 @@ class PaperlibAISummaryExtension extends PLExtension {
     let preferenceKey = "openai-api-key";
     if (model.startsWith("gemini-")) {
       preferenceKey = "gemini-api-key";
-    } else if (model.startsWith("glm-")) {
-      preferenceKey = "zhipu-api-key";
     } else if (model.startsWith("sonar")) {
       preferenceKey = "perplexity-api-key";
-    } else if (model.startsWith("deepseek-")) {
-      preferenceKey = "deepseek-api-key";
     }
 
     return (await PLExtAPI.extensionPreferenceService.get(this.id, preferenceKey)) as string;

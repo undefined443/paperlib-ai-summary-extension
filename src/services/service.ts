@@ -4,12 +4,19 @@ import { PaperEntity } from "paperlib-api/model";
 import { urlUtils } from "paperlib-api/utils";
 import { PDFDocument } from "pdf-lib";
 
-const OPENAI_COMPATIBLE_ENDPOINTS: [prefix: string, url: string][] = [
-  ["glm-",       "https://open.bigmodel.cn/api/paas/v4/chat/completions"],
-  ["sonar",      "https://api.perplexity.ai/chat/completions"],
-  ["deepseek-",  "https://api.deepseek.com/v1/chat/completions"],
-  // gpt- and other unknown models → https://api.openai.com/v1/chat/completions (default)
+const DIRECT_API_ENDPOINTS: [prefix: string, url: string][] = [
+  ["sonar", "https://api.perplexity.ai/chat/completions"],
 ];
+
+type RequestMode = "gemini" | "openai" | "openrouter" | "perplexity";
+
+function getRequestMode(model: string, customAPIURL: string): RequestMode {
+  if (customAPIURL) return "openrouter";
+  if (model.startsWith("gemini-")) return "gemini";
+  if (model.startsWith("gpt-") || /^o\d/.test(model)) return "openai";
+  if (model.startsWith("sonar")) return "perplexity";
+  return "openrouter";
+}
 
 async function limitPDFPages(buf: Buffer, maxPages: number): Promise<Buffer> {
   const doc = await PDFDocument.load(new Uint8Array(buf));
@@ -20,20 +27,14 @@ async function limitPDFPages(buf: Buffer, maxPages: number): Promise<Buffer> {
   return Buffer.from(await newDoc.save());
 }
 
-function isGeminiModel(model: string): boolean {
-  return model.startsWith("gemini-");
-}
-
 function buildGeminiURL(model: string, apiKey: string, customAPIURL: string): string {
   const base = customAPIURL || "https://generativelanguage.googleapis.com/";
   return new URL(`v1beta/models/${model}:generateContent?key=${apiKey}`, base).href;
 }
 
-function buildOpenAICompatibleURL(model: string, customAPIURL: string): string {
-  if (customAPIURL) {
-    return new URL("v1/chat/completions", customAPIURL).href;
-  }
-  const match = OPENAI_COMPATIBLE_ENDPOINTS.find(([prefix]) => model.startsWith(prefix));
+function buildChatCompletionsURL(model: string, customAPIURL: string): string {
+  if (customAPIURL) return new URL("v1/chat/completions", customAPIURL).href;
+  const match = DIRECT_API_ENDPOINTS.find(([prefix]) => model.startsWith(prefix));
   return match?.[1] || "https://api.openai.com/v1/chat/completions";
 }
 
@@ -45,8 +46,11 @@ async function post(url: string, headers: Record<string, string>, body: any): Pr
   return response.body;
 }
 
-function extractText(response: any, isGemini: boolean): string {
-  if (isGemini) {
+function extractText(response: any, mode: RequestMode): string {
+  if (mode === "openai") {
+    return response?.output_text ?? response?.output?.[0]?.content?.[0]?.text ?? "";
+  }
+  if (mode === "gemini") {
     return response?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   }
   return response?.choices?.[0]?.message?.content ?? "";
@@ -71,13 +75,24 @@ export class AISummaryExtService {
     const fileURL = await PLAPI.fileService.access(paperEntity.mainURL, true);
     const buf = await limitPDFPages(readFileSync(urlUtils.eraseProtocol(fileURL)), pageNum);
     const pdfBase64 = buf.toString("base64");
-    const isGemini = isGeminiModel(model);
+    const mode = getRequestMode(model, customAPIURL);
 
-    let url: string;
-    let headers: Record<string, string>;
+    let url = "";
+    let headers: Record<string, string> = {};
     let body: any;
 
-    if (isGemini) {
+    if (mode === "openai") {
+      url = "https://api.openai.com/v1/responses";
+      headers = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+      body = {
+        model,
+        ...(systemInstruction && { instructions: systemInstruction }),
+        input: [{ role: "user", content: [
+          { type: "input_file", filename: "paper.pdf", file_data: `data:application/pdf;base64,${pdfBase64}` },
+          { type: "input_text", text: prompt },
+        ]}],
+      };
+    } else if (mode === "gemini") {
       url = buildGeminiURL(model, apiKey, customAPIURL);
       headers = { "Content-Type": "application/json" };
       body = {
@@ -87,8 +102,21 @@ export class AISummaryExtService {
           { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
         ]}],
       };
-    } else {
-      url = buildOpenAICompatibleURL(model, customAPIURL);
+    } else if (mode === "perplexity") {
+      url = buildChatCompletionsURL(model, customAPIURL);
+      headers = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+      body = {
+        model,
+        messages: [
+          ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+          { role: "user", content: [
+            { type: "text", text: prompt },
+            { type: "file_url", file_url: { url: pdfBase64 } },
+          ]},
+        ],
+      };
+    } else if (mode === "openrouter") {
+      url = buildChatCompletionsURL(model, customAPIURL);
       headers = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
       body = {
         model,
@@ -104,7 +132,7 @@ export class AISummaryExtService {
     }
 
     const response = await post(url, headers, body);
-    return extractText(response, isGemini);
+    return extractText(response, mode);
   }
 
   async tag(
@@ -118,13 +146,13 @@ export class AISummaryExtService {
     const fileURL = await PLAPI.fileService.access(paperEntity.mainURL, true);
     const buf = await limitPDFPages(readFileSync(urlUtils.eraseProtocol(fileURL)), 1);
     const pdfBase64 = buf.toString("base64");
-    const isGemini = isGeminiModel(model);
+    const mode = getRequestMode(model, customAPIURL);
 
-    let url: string;
-    let headers: Record<string, string>;
+    let url = "";
+    let headers: Record<string, string> = {};
     let body: any;
 
-    if (isGemini) {
+    if (mode === "gemini") {
       url = buildGeminiURL(model, apiKey, customAPIURL);
       headers = { "Content-Type": "application/json" };
       body = {
@@ -135,8 +163,19 @@ export class AISummaryExtService {
           { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
         ]}],
       };
-    } else {
-      url = buildOpenAICompatibleURL(model, customAPIURL);
+    } else if (mode === "openai") {
+      url = "https://api.openai.com/v1/responses";
+      headers = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+      body = {
+        model,
+        ...(systemInstruction && { instructions: systemInstruction }),
+        input: [{ role: "user", content: [
+          { type: "input_file", filename: "paper.pdf", file_data: `data:application/pdf;base64,${pdfBase64}` },
+          { type: "input_text", text: prompt },
+        ]}],
+      };
+    } else if (mode === "openrouter") {
+      url = buildChatCompletionsURL(model, customAPIURL);
       headers = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
       body = {
         model,
@@ -149,10 +188,20 @@ export class AISummaryExtService {
         ],
         plugins: [{ id: "file-parser" }],
       };
+    } else {
+      url = buildChatCompletionsURL(model, customAPIURL);
+      headers = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+      body = {
+        model,
+        messages: [
+          ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+          { role: "user", content: prompt },
+        ],
+      };
     }
 
     const response = await post(url, headers, body);
-    return extractText(response, isGemini);
+    return extractText(response, mode);
   }
 
   async filter(
@@ -164,12 +213,12 @@ export class AISummaryExtService {
     customAPIURL: string,
   ) {
     const ids: number[] = [];
-    const isGemini = isGeminiModel(model);
+    const isGemini = model.startsWith("gemini-");
     const chunkSize = isGemini ? 400 : 200;
 
     const url = isGemini
       ? buildGeminiURL(model, apiKey, customAPIURL)
-      : buildOpenAICompatibleURL(model, customAPIURL);
+      : buildChatCompletionsURL(model, customAPIURL);
     const headers: Record<string, string> = isGemini
       ? { "Content-Type": "application/json" }
       : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
@@ -214,7 +263,7 @@ export class AISummaryExtService {
       let filteredJSONIds = "";
       try {
         const response = await post(url, headers, body);
-        filteredJSONIds = extractText(response, isGemini);
+        filteredJSONIds = extractText(response, isGemini ? "gemini" : "openrouter");
       } catch (e) {
         PLAPI.logService.error("Failed to request LLM API.", e as Error, true, "AISummaryExt");
         continue;
