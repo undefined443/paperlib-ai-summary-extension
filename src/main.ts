@@ -80,7 +80,7 @@ class PaperlibAISummaryExtension extends PLExtension {
           type: "string",
           name: "Page Number",
           description: "Max pages to send for summarizing.",
-          value: "5",
+          value: "9",
           order: 3,
         },
         prompt: {
