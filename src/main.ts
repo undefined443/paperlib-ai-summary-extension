@@ -24,7 +24,8 @@ class PaperlibAISummaryExtension extends PLExtension {
           name: "LLM Model",
           description: "The LLM model to use.",
           options: {
-            "deepseek-chat": "DeepSeek Chat",
+            "deepseek-v4-flash": "DeepSeek V4 Flash",
+            "deepseek-v4-pro": "DeepSeek V4 Pro",
             "glm-5": "GLM-5",
             "glm-5-turbo": "GLM-5 Turbo",
             "glm-5.1": "GLM-5.1",
@@ -246,7 +247,7 @@ class PaperlibAISummaryExtension extends PLExtension {
       preferenceKey = "zhipu-api-key";
     } else if (model.startsWith("sonar")) {
       preferenceKey = "perplexity-api-key";
-    } else if (model === "deepseek-chat") {
+    } else if (model.startsWith("deepseek-")) {
       preferenceKey = "deepseek-api-key";
     }
 
